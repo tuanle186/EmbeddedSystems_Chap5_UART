@@ -26,6 +26,7 @@
 #include "gpio.h"
 #include "fsmc.h"
 #include "uart.h"
+#include <ctype.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -72,6 +73,9 @@ uint8_t retry_count = 0;       // Tracks retry attempts
 uint32_t timeout_timer = 0;    // Tracks time since request sent
 uint8_t timeout_flag = 0;      // Indicates if waiting for a response
 uint8_t update_time_uart_flag = 0;
+
+uint8_t error_display_flag = 0;     // Flag to indicate error message display
+uint32_t error_display_timer = 0;   // Timer to track the error display duration
 
 /* USER CODE END PV */
 
@@ -150,6 +154,20 @@ int main(void)
 		  // Check for button press to enter UART update mode
 		  update_time_uart();
 
+		  // Handle error message display timing
+		  if (error_display_flag) {
+			  error_display_timer += 50; // Increment timer by the timer interval (50ms)
+
+			  if (error_display_timer >= 2000) { // 2000ms = 2 seconds
+				  error_display_flag = 0;        // Reset the flag
+				  error_display_timer = 0;       // Reset the timer
+
+				  // Clear the error messages from the LCD
+				  // You may need to adjust the coordinates based on your display layout
+				  lcd_Fill(0, 20, lcddev.width, 60, BLACK); // Clear the area where messages were displayed
+			  }
+		  }
+
 		  // Monitor timeout if waiting for a response
 		  if (update_time_uart_flag) {
 			  if (timeout_flag) {
@@ -175,6 +193,11 @@ int main(void)
 					  } else {
 						  // Exceeded retry limit, display error and reset
 						  lcd_StrCenter(0, 20, "Error: No response!", RED, BLACK, 16, 0);
+
+						  // Set the error display flag and reset the timer
+						  error_display_flag = 1;     // Start the error display duration
+						  error_display_timer = 0;    // Reset the timer
+
 						  reset_timeout(); // Reset timeout and retry counters
 						  status = UPDATE_HOURS; // Reset state machine to initial state
 						  update_time_uart_flag = 0;
@@ -195,14 +218,16 @@ int main(void)
 					  int hour = atoi(rcv);
 					  if (hour >= 0 && hour < 24) {
 						  ds3231_Write(ADDRESS_HOUR, hour);
-						  lcd_ShowStr(20, 160, "Hours updated", GREEN, BLACK, 16, 0);
+//						  lcd_ShowStr(20, 160, "Hours updated", GREEN, BLACK, 16, 0);
 						  status = UPDATE_MINS; // Proceed to updating minutes
 						  reset_timeout();     // Clear timeout after valid response
 					  } else {
 						  uart_Rs232SendString("Hours\n"); // Resend request for hours
+						  clear_buffer();
 					  }
 				  } else {
 					  uart_Rs232SendString("Hours\n"); // Resend request for hours
+					  clear_buffer();
 				  }
 				  break;
 
@@ -211,14 +236,16 @@ int main(void)
 					  int mins = atoi(rcv);
 					  if (mins >= 0 && mins < 60) {
 						  ds3231_Write(ADDRESS_MIN, mins);
-						  lcd_ShowStr(20, 190, "Minutes updated", GREEN, BLACK, 16, 0);
+//						  lcd_ShowStr(20, 190, "Minutes updated", GREEN, BLACK, 16, 0);
 						  status = UPDATE_SECS; // Proceed to updating seconds
 						  reset_timeout();     // Clear timeout after valid response
 					  } else {
 						  uart_Rs232SendString("Minutes\n"); // Resend request for minutes
+						  clear_buffer();
 					  }
 				  } else {
 					  uart_Rs232SendString("Minutes\n"); // Resend request for minutes
+					  clear_buffer();
 				  }
 				  break;
 
@@ -227,24 +254,36 @@ int main(void)
 					  int secs = atoi(rcv);
 					  if (secs >= 0 && secs < 60) {
 						  ds3231_Write(ADDRESS_SEC, secs);
-						  lcd_ShowStr(20, 220, "Seconds updated", GREEN, BLACK, 16, 0);
+//						  lcd_ShowStr(20, 220, "Seconds updated", GREEN, BLACK, 16, 0);
 						  status = CONFIRM; // Proceed to confirmation
 						  reset_timeout(); // Clear timeout after valid response
+
+						  lcd_StrCenter(0, 20, "Time updated successfully", GREEN, BLACK, 16, 0);
+
+						  // Set the error display flag and reset the timer
+						  error_display_flag = 1;     // Start the error display duration
+						  error_display_timer = 0;    // Reset the timer
+
+						  reset_timeout(); // Clear timeout and reset retry counters
+						  status = UPDATE_HOURS; // Reset state machine for the next update
+						  update_time_uart_flag = 0;
 					  } else {
 						  uart_Rs232SendString("Seconds\n"); // Resend request for seconds
+						  clear_buffer();
 					  }
 				  } else {
 					  uart_Rs232SendString("Seconds\n"); // Resend request for seconds
+					  clear_buffer();
 				  }
 				  break;
 
-			  case CONFIRM:
-				  // Final confirmation and success message
-				  lcd_StrCenter(0, 20, "Time updated successfully", GREEN, BLACK, 16, 0);
-				  reset_timeout(); // Clear timeout and reset retry counters
-				  status = UPDATE_HOURS; // Reset state machine for the next update
-				  update_time_uart_flag = 0;
-				  break;
+//			  case CONFIRM:
+//				  // Final confirmation and success message
+//				  lcd_StrCenter(0, 20, "Time updated successfully", GREEN, BLACK, 16, 0);
+//				  reset_timeout(); // Clear timeout and reset retry counters
+//				  status = UPDATE_HOURS; // Reset state machine for the next update
+//				  update_time_uart_flag = 0;
+//				  break;
 
 			  default:
 				  break;
@@ -451,6 +490,7 @@ void reset_timeout() {
     timeout_flag = 0;
     timeout_timer = 0;
     retry_count = 0;
+    clear_buffer();
 }
 
 void test_receive(){

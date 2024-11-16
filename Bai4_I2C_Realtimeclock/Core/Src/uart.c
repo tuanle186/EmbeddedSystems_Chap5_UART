@@ -76,7 +76,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		rcv[index_buffer] = receive_buffer1;
 
 		// Check for end-of-message (newline character '\n')
-		if (receive_buffer1 == '\n') {
+		if (receive_buffer1 == '!') {
 			rcv[index_buffer] = '\0'; // Null-terminate the message
 			buffer_flag = 1;          // Set buffer flag to indicate a complete message
 		}
